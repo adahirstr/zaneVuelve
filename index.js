@@ -53,9 +53,53 @@ const colorFrases = "#ffe24a";
 // Color fijo para la segunda lista (rojo suave)
 const colorFrases2 = "#d65a6f";
 
+// Pausa/reanuda generación cuando el tab está en background
+let intervalDropsId = null;
+let intervalDrops2Id = null;
+
+function clearAllDrops() {
+    // Limpia cualquier letra acumulada
+    document.querySelectorAll(".drop, .drop2").forEach((el) => el.remove());
+}
+
+function stopDropLoops() {
+    if (intervalDropsId != null) {
+        clearInterval(intervalDropsId);
+        intervalDropsId = null;
+    }
+    if (intervalDrops2Id != null) {
+        clearInterval(intervalDrops2Id);
+        intervalDrops2Id = null;
+    }
+}
+
+function startDropLoops() {
+    // No iniciar si está oculto o si ya corren
+    if (document.hidden) return;
+    if (intervalDropsId != null || intervalDrops2Id != null) return;
+
+    intervalDropsId = setInterval(() => {
+        if (document.hidden) return;
+        // Limpiar elementos antiguos si hay demasiados (neon)
+        const drops = document.getElementsByClassName('drop');
+        while (drops.length > 20) drops[0].remove();
+        cascadaRandom();
+    }, gap);
+
+    intervalDrops2Id = setInterval(() => {
+        if (document.hidden) return;
+        const drops2 = document.getElementsByClassName('drop2');
+        while (drops2.length > 10) drops2[0].remove();
+        cascadaRandom2();
+    }, gap2);
+}
+
 // Como generamos un drop¡
 
-function drop(text, xPos){
+function drop(text, xPos) {
+    // No generar en background (evita acumulación)
+    if (document.hidden) return;
+
     const element = document.createElement("div");
     element.className = "drop";
     element.textContent = text;
@@ -70,13 +114,6 @@ function drop(text, xPos){
     element.addEventListener("animationend", () => {
         element.remove();
     });
-
-    // Limpiar el elemento si la página está en segundo plano
-    document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-            element.remove();
-        }
-    });
 }
 
 function clamp(n, min, max) {
@@ -84,19 +121,31 @@ function clamp(n, min, max) {
 }
 
 let col2Index = 0;
-function nextXPos2() {
-    const cols = frases_random_2.length;
-    const colW = window.innerWidth / (cols + 1);
-    const jitter = (Math.random() * 60) - 30;
-    const x = (colW * (col2Index + 1)) + jitter;
-    col2Index = (col2Index + 1) % cols;
-    return clamp(x, 20, window.innerWidth - 20);
+function nextXPos2(textLength) {
+    // Estimar el ancho del texto (aproximadamente 8px por carácter)
+    const estimatedWidth = textLength * 8;
+    const margin = 20; // margen de seguridad
+
+    // Limitar la posición para que el texto no se salga
+    const minX = margin;
+    const maxX = window.innerWidth - estimatedWidth - margin;
+
+    // Si la pantalla es muy pequeña, centrar
+    if (maxX <= minX) {
+        return window.innerWidth / 2;
+    }
+
+    // Generar posición aleatoria dentro de los límites seguros
+    const x = minX + Math.random() * (maxX - minX);
+    return x;
 }
 
-function drop2(text, xPos){
+function drop2(text, xPos) {
+    // No generar en background (evita acumulación)
+    if (document.hidden) return;
+
     const element = document.createElement("div");
     element.className = "drop2";
-    element.style.left = xPos + "px";
     element.style.animationDuration = duracionCaida2 + "ms";
 
     const span = document.createElement("span");
@@ -104,27 +153,41 @@ function drop2(text, xPos){
     element.append(span);
 
     element.style.setProperty("--c", colorFrases2);
+
+    // Agregar temporalmente al DOM para medir el ancho real
+    element.style.visibility = "hidden";
     matrix_html.append(element);
 
-    element.addEventListener("animationend", () => element.remove());
+    // Obtener el ancho real del elemento
+    const realWidth = element.offsetWidth;
+    const margin = 20;
 
-    document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-            element.remove();
-        }
-    });
+    // Ajustar la posición si se sale de los límites
+    let adjustedX = xPos;
+    if (xPos + realWidth > window.innerWidth - margin) {
+        adjustedX = window.innerWidth - realWidth - margin;
+    }
+    if (adjustedX < margin) {
+        adjustedX = margin;
+    }
+
+    // Aplicar la posición ajustada y hacer visible
+    element.style.left = adjustedX + "px";
+    element.style.visibility = "visible";
+
+    element.addEventListener("animationend", () => element.remove());
 }
 
-function cascadaOrdenada(){
+function cascadaOrdenada() {
     frases_random.forEach((txt, i) => {
         setTimeout(() => {
-           const x = (window.innerWidth / (frases_random.length + 1)) * (i + 1);
-           drop(txt, x);
+            const x = (window.innerWidth / (frases_random.length + 1)) * (i + 1);
+            drop(txt, x);
         }, i * gap);
     });
 }
 
-function cascadaRandom(){
+function cascadaRandom() {
     const max = frases_random.length;
     /*for (let i = 0; i < 20; i++){
         setTimeout(() => {
@@ -138,15 +201,15 @@ function cascadaRandom(){
     drop(txt, x);
 }
 
-function cascadaRandom2(){
+function cascadaRandom2() {
     const max = frases_random_2.length;
     const txt = frases_random_2[Math.floor(Math.random() * max)];
-    const x = nextXPos2();
+    const x = nextXPos2(txt.length);
     drop2(txt, x);
 }
 
-function explode (x, y){
-    for(let i = 0; i < 10; i++){
+function explode(x, y) {
+    for (let i = 0; i < 10; i++) {
         const lbl = document.createElement("div");
         lbl.className = "explode";
         lbl.textContent = "♡";
@@ -154,7 +217,7 @@ function explode (x, y){
         lbl.style.top = y + "px";
 
         const dx = (Math.random() - 0.5) * 300 + "px";
-        const dy = (Math.random() - 0.5)* 300 + "px";
+        const dy = (Math.random() - 0.5) * 300 + "px";
         lbl.style.setProperty("--dx", dx);
         lbl.style.setProperty("--dy", dy);
         document.body.append(lbl);
@@ -167,24 +230,22 @@ function explode (x, y){
 window.addEventListener("load", () => {
     // Limpiar cualquier elemento existente al cargar
     matrix_html.innerHTML = '';
-    
+
     // Iniciar la cascada ordenada una vez
     cascadaOrdenada();
-    
-    // Iniciar la cascada aleatoria infinita con un intervalo más largo
-    setInterval(() => {
-        // Limpiar elementos antiguos si hay demasiados (neon)
-        const drops = document.getElementsByClassName('drop');
-        while (drops.length > 20) drops[0].remove();
-        cascadaRandom();
-    }, gap);
 
-    // Segunda cascada: más espaciada y separada
-    setInterval(() => {
-        const drops2 = document.getElementsByClassName('drop2');
-        while (drops2.length > 10) drops2[0].remove();
-        cascadaRandom2();
-    }, gap2);
+    // Iniciar loops de caída (se pausan en background)
+    startDropLoops();
+
+    // Pausar/reanudar cuando se oculta/muestra el tab
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            stopDropLoops();
+            clearAllDrops();
+        } else {
+            startDropLoops();
+        }
+    });
 
     // Inicializar carta v2 (si existe en el DOM)
     initCartaV2();
@@ -198,7 +259,7 @@ window.addEventListener("load", () => {
     // Botón ACEPTAR (escena final)
     initAcceptBtn();
 });
-  
+
 // 7. Click listener
 document.body.addEventListener("click", e => {
     // No explotar si estamos interactuando con la carta
@@ -252,8 +313,8 @@ function initBgAudio() {
     const startOnce = async () => {
         if (started) return;
         started = true;
-        try { audio.currentTime = 0; } catch {}
-        try { await audio.play(); } catch {}
+        try { audio.currentTime = 0; } catch { }
+        try { await audio.play(); } catch { }
     };
 
     // En móvil/desktop: tocar/click en la carta inicia la música
